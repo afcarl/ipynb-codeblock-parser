@@ -39,56 +39,48 @@ foreach (0..3) {
 
 sub strip_output {
     # take in a line of output from iPython and strip anything we don't want
-    my $output = $_[0];
-    $output = $1 if $output =~ m/In.*\[\d*\]: (.*)/;
-    $output = $1 if $output =~ m/Out.*\[\d*\]: (.*)/;
-    $output = $1 while $output =~ m/\.\.\.: (.*)/g;
-    $output =~ s/\\"/'/g;
-    return $output;
+    $_ = $_[0];
+    $_ = $1 if m/In.*\[\d*\]: (.*)/;
+    $_ = $1 if m/Out.*\[\d*\]: (.*)/;
+    $_ = $1 while m/\.\.\.: (.*)/;
+    $_ =~ s/\\"/'/g;
+    return $_;
 }
 
 sub run_codeblock {
     my $fh = $_[0];
     my $block_begin = tell $fh;
     my $block_has_output = 0;
-    my $line = '';
-    my $executing;
-    my $in_multiline = 0;
-
-    until (eof($fh) || ($line = readline $fh) =~ m/```/) {
-        if ($line =~ m/>>>/) {
+    until (eof($fh) || ($_ = readline $fh) =~ m/```/) {
+        if (m/>>>/) {
             $block_has_output = 1;
             last;
         }
     }
     seek $fh, $block_begin, 0;
 
-    my $output;
-    $line = '';
+    my $in_multiline = 0;
     unless ($block_has_output) {
-        until (eof($fh) || ($line = readline $fh) =~ m/```/) {
-            my $code_line = $1 . "\n" if $line =~ m/"(.*)\\n/;
+        until (eof($fh) || ($_ = readline $fh) =~ m/```/) {
+            my $code_line = $1 . "\n" if m/"(.*)\\n/;
             $code_line =~ s/\\"/"/g;
             print $ipython_in $code_line unless $code_line =~ m/^#/;
         }
         return;
     }
 
-    until (eof($fh) || ($line = readline $fh) =~ m/```/) {
-        my $code_line = $1 . "\n" if $line =~ m/"(.*)\\n/;
+    my $output;
+    my $executing;
+    until (eof($fh) || ($_ = readline $fh) =~ m/```/) {
+        my $code_line = $1 . "\n" if m/"(.*)\\n/;
         if ($code_line =~ m/^>>>/ || $code_line =~ m/^\.\.\./) {
-            if ($code_line =~ m/^\.\.\./) {
-                $in_multiline = 1;
-            }
+            $in_multiline = 1 if $code_line =~ m/^\.\.\./;
             $code_line =~ s/\\"/"/g;
             print $ipython_in $code_line unless $code_line =~ m/^#/;
             $executing = $code_line;
         } else {
-            if ($in_multiline) {
-                print $ipython_in "\n";
-            }
+            print $ipython_in "\n" if $in_multiline;
             $in_multiline = 0;
-            next unless $block_has_output;
             next if $code_line eq "\\n\n" || $code_line eq "\n" || $code_line =~ m/^#/;
             $output = <$ipython_out>;
             $output = strip_output($output);
@@ -111,14 +103,9 @@ sub run_codeblock {
 # open a handle to the ipynb file
 open my $fh, '<', $ARGV[0] or die $!;
 
-my $redirecting = 0; # are we redirecting output to the iPython process?
-my $code_line;
-my $executing;       # which line of code is running?
 until (eof($fh)) {
     $_ = readline $fh;
-    if (m/```python/) {
-        run_codeblock($fh);
-    }
+    run_codeblock($fh) if m/```python/;
 }
 
 print "Finished!\n";
