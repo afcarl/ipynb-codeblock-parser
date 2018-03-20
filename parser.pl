@@ -53,6 +53,7 @@ sub run_codeblock {
     my $block_has_output = 0;
     my $line = '';
     my $executing;
+    my $in_multiline = 0;
 
     until (eof($fh) || ($line = readline $fh) =~ m/```/) {
         if ($line =~ m/>>>/) {
@@ -75,20 +76,30 @@ sub run_codeblock {
 
     until (eof($fh) || ($line = readline $fh) =~ m/```/) {
         my $code_line = $1 . "\n" if $line =~ m/"(.*)\\n/;
-
         if ($code_line =~ m/^>>>/ || $code_line =~ m/^\.\.\./) {
+            if ($code_line =~ m/^\.\.\./) {
+                $in_multiline = 1;
+            }
             $code_line =~ s/\\"/"/g;
             print $ipython_in $code_line unless $code_line =~ m/^#/;
+            # print $code_line unless $code_line =~ m/^#/;
             $executing = $code_line;
         } else {
+            if ($in_multiline) {
+                print $ipython_in "\n";
+            }
+            $in_multiline = 0;
             next unless $block_has_output;
             next if $code_line eq "\\n\n" || $code_line eq "\n" || $code_line =~ m/^#/;
-            # print $code_line;
             $output = <$ipython_out>;
             $output = strip_output($output);
+            # print "Executing: $executing";
+            # print "Stripped: '$output'\n";
 
             while ($output eq "\n" || $output eq '') {
+                # print "Getting output!\n";
                 $output = <$ipython_out>;
+                # print "Output is '$output'\n";
                 $output = strip_output($output);
             }
             chomp $output;
@@ -109,44 +120,10 @@ my $redirecting = 0; # are we redirecting output to the iPython process?
 my $code_line;
 my $executing;       # which line of code is running?
 until (eof($fh)) {
-    # foreach (<$fh>) {
     $_ = readline $fh;
     if (m/```python/) {
         run_codeblock($fh);
     }
-
-    # if ($redirecting) {
-    #     $code_line = $1 . "\n" if $_ =~ m/"(.*)\\n/; # read the line of code
-    #     # $code_line =~ tr/\\//d;                      # remove escape for newlines
-    #     if ($code_line =~ m/^>>>/ || $code_line =~ m/^\.\.\./) {
-    #         # if code_line is actually a line of code
-    #         # send it to iPython unless it's a comment
-    #         $code_line =~ s/\\"/"/g;
-    #         # print "sending $code_line";
-    #         print $ipython_in $code_line unless $code_line =~ m/^#/;
-    #         $executing = $code_line;
-    #     } else {
-    #         # print "saw $code_line";
-    #         next if $code_line eq "\\n\n" or $code_line eq "\n" or $code_line =~ m/^#/;
-    #         # if code_line isn't a line of code, then it's the output we should expect
-    #         $output = <$ipython_out>;
-    #         $output = strip_output($output);
-            
-    #         while ($output eq "\n" or $output eq '') {
-    #             $output = <$ipython_out>;
-    #             $output = strip_output($output);
-    #         }
-    #         # print "\n\noutput: $output";
-
-    #         chomp $output;
-    #         chomp $code_line;
-
-    #         if ($output ne $code_line) {
-    #             print "Error!\n\n    '$code_line'\n\ndoes not match\n\n    '$output'\n\n" .
-    #                 "in\n\n    $executing\n\n";
-    #         }
-    #     }
-    # }
 }
 
 print "Finished!\n";
