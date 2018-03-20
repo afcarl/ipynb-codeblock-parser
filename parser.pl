@@ -82,7 +82,6 @@ sub run_codeblock {
             }
             $code_line =~ s/\\"/"/g;
             print $ipython_in $code_line unless $code_line =~ m/^#/;
-            # print $code_line unless $code_line =~ m/^#/;
             $executing = $code_line;
         } else {
             if ($in_multiline) {
@@ -93,13 +92,9 @@ sub run_codeblock {
             next if $code_line eq "\\n\n" || $code_line eq "\n" || $code_line =~ m/^#/;
             $output = <$ipython_out>;
             $output = strip_output($output);
-            # print "Executing: $executing";
-            # print "Stripped: '$output'\n";
 
             while ($output eq "\n" || $output eq '') {
-                # print "Getting output!\n";
                 $output = <$ipython_out>;
-                # print "Output is '$output'\n";
                 $output = strip_output($output);
             }
             chomp $output;
