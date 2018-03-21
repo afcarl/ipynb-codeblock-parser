@@ -113,7 +113,7 @@ open my $fh, '<', $ARGV[0] or die $!;
 
 until (eof($fh)) {
     $_ = readline $fh;
-    run_codeblock($fh, $ipython_in, $ipython_out) if m/```python/;
+    run_codeblock($fh, $ipython_in, $ipython_out) if m/```\s*python/;
 }
 
 print "Finished!\n";
