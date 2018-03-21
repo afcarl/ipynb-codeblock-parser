@@ -28,61 +28,61 @@ use strict;
 use warnings;
 use IPC::Open2;
 
-my $ipython_out;
-my $ipython_in;
-my $pid = open2($ipython_out, $ipython_in, 'ipython');
-print "Opened an iPython process\n";
-my $output;
-foreach (0..3) {
-    $output = <$ipython_out>; # gobble the header
-}
-
 sub strip_output {
     # take in a line of output from iPython and strip anything we don't want
     $_ = $_[0];
-    $_ = $1 if m/In.*\[\d*\]: (.*)/;
-    $_ = $1 if m/Out.*\[\d*\]: (.*)/;
-    $_ = $1 while m/\.\.\.: (.*)/;
-    $_ =~ s/\\"/'/g;
+    $_ = $1 while m/In.*\[\d*\]: (.*)/;
+    $_ = $1 while m/Out.*\[\d*\]: (.*)/;
+    $_ = $1 while m/\.{3}: (.*)/;
+    s/\\"/'/g;
     return $_;
 }
 
-sub run_codeblock {
+sub block_has_output {
+    # does the current block of code have any output?
+    # if it has >>> input prompts, then it has output
+    # note that this then requires you to provide output for all `>>>`-prompted lines
     my $fh = $_[0];
     my $block_begin = tell $fh;
-    my $block_has_output = 0;
+    my $has_output = 0;
     until (eof($fh) || ($_ = readline $fh) =~ m/```/) {
         if (m/>>>/) {
-            $block_has_output = 1;
+            $has_output = 1;
             last;
         }
     }
     seek $fh, $block_begin, 0;
+    return $has_output;
+}
 
-    my $in_multiline = 0;
-    unless ($block_has_output) {
+sub run_codeblock {
+    my($fh, $ipython_in, $ipython_out) = @_;
+
+    unless (block_has_output($fh)) {
+        # if there's no output, simply forward every non-comment in the cell to iPython
         until (eof($fh) || ($_ = readline $fh) =~ m/```/) {
-            my $code_line = $1 . "\n" if m/"(.*)\\n/;
-            $code_line =~ s/\\"/"/g;
-            print $ipython_in $code_line unless $code_line =~ m/^#/;
+            $_ = $1 . "\n" if m/"(.*)\\n/;
+            s/\\"/"/g;
+            print $ipython_in $_ unless m/^#/;
         }
         return;
     }
 
-    my $output;
-    my $executing;
+    # if you get here, there's output in the cell
+    my $in_multiline = 0; # flag for multiline input, which needs an extra newline to run
+    my $executing;        # current line of code that is executing
     until (eof($fh) || ($_ = readline $fh) =~ m/```/) {
-        my $code_line = $1 . "\n" if m/"(.*)\\n/;
-        if ($code_line =~ m/^>>>/ || $code_line =~ m/^\.\.\./) {
-            $in_multiline = 1 if $code_line =~ m/^\.\.\./;
-            $code_line =~ s/\\"/"/g;
-            print $ipython_in $code_line unless $code_line =~ m/^#/;
-            $executing = $code_line;
+        my $line = $1 . "\n" if m/"(.*)\\n/;
+        if ($line =~ m/^>>>/ || $line =~ m/^\.{3}/) {
+            $in_multiline = 1 if $line =~ m/^\.{3}/;
+            $line =~ s/\\"/"/g;
+            print $ipython_in $line unless $line =~ m/^#/;
+            $executing = $line;
         } else {
             print $ipython_in "\n" if $in_multiline;
             $in_multiline = 0;
-            next if $code_line eq "\\n\n" || $code_line eq "\n" || $code_line =~ m/^#/;
-            $output = <$ipython_out>;
+            next if $line eq "\\n\n" || $line eq "\n" || $line =~ m/^#/;
+            my $output = <$ipython_out>;
             $output = strip_output($output);
 
             while ($output eq "\n" || $output eq '') {
@@ -90,14 +90,22 @@ sub run_codeblock {
                 $output = strip_output($output);
             }
             chomp $output;
-            chomp $code_line;
+            chomp $line;
 
-            if ($output ne $code_line) {
-                print "Error!\n\n    '$code_line'\n\ndoes not match\n\n    '$output'\n\n" .
+            if ($output ne $line) {
+                print "Error!\n\n    '$line'\n\ndoes not match\n\n    '$output'\n\n" .
                     "in\n\n    $executing\n\n";
             }
         }
     }
+}
+
+my($ipython_in, $ipython_out);
+my $pid = open2($ipython_out, $ipython_in, 'ipython');
+
+print "Opened an iPython process\n";
+foreach (0..3) {
+    $_ = <$ipython_out>; # gobble the header
 }
 
 # open a handle to the ipynb file
@@ -105,7 +113,7 @@ open my $fh, '<', $ARGV[0] or die $!;
 
 until (eof($fh)) {
     $_ = readline $fh;
-    run_codeblock($fh) if m/```python/;
+    run_codeblock($fh, $ipython_in, $ipython_out) if m/```python/;
 }
 
 print "Finished!\n";
