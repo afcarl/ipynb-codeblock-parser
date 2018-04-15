@@ -65,6 +65,7 @@ sub run_codeblock {
             s/\\"/"/g;
             print $ipython_in $_ unless m/^#/;
         }
+        print $ipython_in "\n";
         return;
     }
 
@@ -73,21 +74,27 @@ sub run_codeblock {
     my $executing;        # current line of code that is executing
     until (eof($fh) || ($_ = readline $fh) =~ m/```/) {
         my $line = $1 . "\n" if m/"(.*)\\n/;
+        next if $line =~ "\n";
         if ($line =~ m/^>>>/ || $line =~ m/^\.{3}/) {
             $in_multiline = 1 if $line =~ m/^\.{3}/;
             $line =~ s/\\"/"/g;
             print $ipython_in $line unless $line =~ m/^#/;
             $executing = $line;
+            print $line;
         } else {
+            print $executing;
             print $ipython_in "\n" if $in_multiline;
             $in_multiline = 0;
             next if $line eq "\\n\n" || $line eq "\n" || $line =~ m/^#/;
             my $output = <$ipython_out>;
             $output = strip_output($output);
+            print $output;
 
             while ($output eq "\n" || $output eq '') {
+                print "running thing\n\n";
                 $output = <$ipython_out>;
                 $output = strip_output($output);
+                print $output;
             }
             chomp $output;
             chomp $line;
@@ -96,7 +103,11 @@ sub run_codeblock {
                 print "Error!\n\n    '$line'\n\ndoes not match\n\n    '$output'\n\n" .
                     "in\n\n    $executing\n\n";
             }
+            print "Done with $executing\n";
         }
+    }
+    if ($in_multiline) {
+        print $ipython_in "\n";
     }
 }
 
